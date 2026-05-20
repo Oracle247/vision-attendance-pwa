@@ -8,7 +8,8 @@
       "Bash(taskkill /f /im \"Vision Control Panel.exe\")",
       "Bash(rm -rf node_modules package-lock.json)",
       "Bash(tasklist)",
-      "Bash(taskkill //f //im electron.exe)"
+      "Bash(taskkill //f //im electron.exe)",
+      "Bash(pm2 restart:*)"
     ]
   }
 }
