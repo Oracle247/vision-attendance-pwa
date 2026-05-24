@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { ArrowLeft, LogOut, Users, Calendar } from 'lucide-react'
 
 export default function Header() {
   const location = useLocation()
   const navigate = useNavigate()
-  const isSessionPage = location.pathname.startsWith('/session/')
+  const isSubPage = location.pathname.startsWith('/session/') || location.pathname === '/members'
+  const isMembers = location.pathname === '/members'
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken')
@@ -14,7 +15,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 h-14 flex items-center px-4 sm:px-6">
       <div className="flex items-center gap-3 flex-1">
-        {isSessionPage ? (
+        {isSubPage ? (
           <button
             onClick={() => navigate('/')}
             className="p-2 -ml-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
@@ -29,16 +30,37 @@ export default function Header() {
           </div>
         )}
         <h1 className="text-lg font-semibold text-gray-900 truncate">
-          {isSessionPage ? 'Session Details' : 'Vision Attendance'}
+          {isMembers ? 'Members' : location.pathname.startsWith('/session/') ? 'Session Details' : 'Vision Attendance'}
         </h1>
       </div>
 
-      <button
-        onClick={handleLogout}
-        className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
-      >
-        <LogOut className="w-5 h-5" />
-      </button>
+      <div className="flex items-center gap-1">
+        {!isMembers && (
+          <button
+            onClick={() => navigate('/members')}
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+            title="Members"
+          >
+            <Users className="w-5 h-5" />
+          </button>
+        )}
+        {isMembers && (
+          <button
+            onClick={() => navigate('/')}
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+            title="Sessions"
+          >
+            <Calendar className="w-5 h-5" />
+          </button>
+        )}
+        <button
+          onClick={handleLogout}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+          title="Logout"
+        >
+          <LogOut className="w-5 h-5" />
+        </button>
+      </div>
     </header>
   )
 }

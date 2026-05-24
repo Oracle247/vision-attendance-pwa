@@ -3,6 +3,7 @@ import { Toaster } from 'sonner'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import SessionDetail from '@/pages/SessionDetail'
+import Members from '@/pages/Members'
 import Layout from '@/components/Layout'
 
 function AuthGuard() {
@@ -21,6 +22,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/session/:id" element={<SessionDetail />} />
+            <Route path="/members" element={<Members />} />
           </Route>
         </Route>
       </Routes>

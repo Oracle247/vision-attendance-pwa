@@ -65,6 +65,19 @@ export const userService = {
         ),
 };
 
+export interface IDepartment {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+export const departmentService = {
+    getAll: () =>
+        handleApiCall<PaginatedData<IDepartment>>(
+            () => apiClient.get<ApiResponse<PaginatedData<IDepartment>>>("/departments", { params: { limit: 100 } })
+        ),
+};
+
 export const authService = {
     register: (payload: Record<string, unknown>) =>
         handleApiCall<{ user: IUser }>(

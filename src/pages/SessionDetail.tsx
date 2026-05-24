@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   attendanceService,
   userService,
   authService,
 } from '@/lib/attendanceService'
+import { ApiError } from '@/lib/utils'
 import { IAttendanceSession, IAttendance } from '@/types/attendance'
 import { IUser } from '@/types/user'
 import SearchInput from '@/components/SearchInput'
-import RegistrationForm from '@/components/RegistrationForm'
+import RegistrationForm, { RegistrationFormHandle } from '@/components/RegistrationForm'
 import { format } from 'date-fns'
 import {
   UserPlus,
@@ -18,6 +19,86 @@ import {
   Loader2,
   X,
 } from 'lucide-react'
+
+type AttendeeTab = 'all' | 'members' | 'first_timers' | 'workers'
+
+function AttendeeList({ attendees, onShowAdd }: { attendees: IAttendance[]; onShowAdd: () => void }) {
+  const [tab, setTab] = useState<AttendeeTab>('all')
+
+  const filtered = useMemo(() => {
+    if (tab === 'members') return attendees.filter(a => a.user?.churchStatus === 'MEMBER' && a.user?.membershipType !== 'WORKER')
+    if (tab === 'first_timers') return attendees.filter(a => a.user?.churchStatus === 'FIRST_TIMER' || a.user?.churchStatus === 'VISITOR')
+    if (tab === 'workers') return attendees.filter(a => a.user?.membershipType === 'WORKER')
+    return attendees
+  }, [attendees, tab])
+
+  const counts = useMemo(() => ({
+    all: attendees.length,
+    members: attendees.filter(a => a.user?.churchStatus === 'MEMBER' && a.user?.membershipType !== 'WORKER').length,
+    first_timers: attendees.filter(a => a.user?.churchStatus === 'FIRST_TIMER' || a.user?.churchStatus === 'VISITOR').length,
+    workers: attendees.filter(a => a.user?.membershipType === 'WORKER').length,
+  }), [attendees])
+
+  const tabs: { key: AttendeeTab; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'members', label: 'Members' },
+    { key: 'first_timers', label: 'First Timers' },
+    { key: 'workers', label: 'Workers' },
+  ]
+
+  return (
+    <div className="w-full lg:flex-1">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 sm:px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2 overflow-x-auto">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${
+                tab === t.key
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              }`}
+            >
+              {t.label} ({counts[t.key]})
+            </button>
+          ))}
+        </div>
+        {attendees.length === 0 ? (
+          <div className="text-center py-12">
+            <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">No attendees yet</p>
+            <button onClick={onShowAdd} className="mt-2 text-sm text-emerald-600 hover:underline font-medium">
+              Mark attendance
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-sm text-gray-400">No {tab.replace('_', ' ')} in this session</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filtered.map((attendee: IAttendance) => (
+              <div key={attendee.id} className="px-4 sm:px-5 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {attendee.user?.firstName} {attendee.user?.lastName}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {attendee.user?.department || 'No department'}
+                  </p>
+                </div>
+                <span className="text-xs text-gray-400">
+                  {format(new Date(attendee.markedAt), 'hh:mm a')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function SessionDetail() {
   const { id: sessionId } = useParams<{ id: string }>()
@@ -30,6 +111,8 @@ export default function SessionDetail() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [showRegistrationForm, setShowRegistrationForm] = useState(false)
   const [registering, setRegistering] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const formRef = useRef<RegistrationFormHandle>(null)
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return
@@ -86,16 +169,26 @@ export default function SessionDetail() {
 
   const handleRegisterUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    const form = e.currentTarget
     setRegistering(true)
+    setFieldErrors({})
     try {
-      const formData = new FormData(e.currentTarget)
-      const payload = Object.fromEntries(formData.entries())
+      const formData = new FormData(form)
+      const payload: Record<string, FormDataEntryValue | FormDataEntryValue[]> = {}
+      formData.forEach((value, key) => {
+        payload[key] = value
+      })
+      payload.departmentIds = formData.getAll('departmentIds')
       const res = await authService.register(payload)
       if (res?.user?.id) {
+        form.reset()
+        formRef.current?.reset()
         await handleSingleMark(res.user.id)
       }
-    } catch {
-      // handled by toast
+    } catch (err) {
+      if (err instanceof ApiError && err.fieldErrors) {
+        setFieldErrors(err.fieldErrors)
+      }
     } finally {
       setRegistering(false)
     }
@@ -175,6 +268,7 @@ export default function SessionDetail() {
                   setMemberSearch('')
                   setSearchResult([])
                   setShowRegistrationForm(false)
+                  setFieldErrors({})
                 }}
                 className="p-1 rounded hover:bg-gray-200 text-gray-400"
               >
@@ -231,8 +325,10 @@ export default function SessionDetail() {
                 </div>
               ) : showRegistrationForm ? (
                 <RegistrationForm
+                  ref={formRef}
                   onSubmit={handleRegisterUser}
                   isSubmitting={registering}
+                  fieldErrors={fieldErrors}
                 />
               ) : null}
             </div>
@@ -240,48 +336,7 @@ export default function SessionDetail() {
         )}
 
         {/* Attendee List */}
-        <div className="w-full lg:flex-1">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 sm:px-5 py-3 border-b border-gray-100 bg-gray-50">
-              <h3 className="text-sm font-medium text-gray-700">
-                Attendees ({attendees.length})
-              </h3>
-            </div>
-            {attendees.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No attendees yet</p>
-                <button
-                  onClick={() => setShowAddPanel(true)}
-                  className="mt-2 text-sm text-emerald-600 hover:underline font-medium"
-                >
-                  Mark attendance
-                </button>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {attendees.map((attendee: IAttendance) => (
-                  <div
-                    key={attendee.id}
-                    className="px-4 sm:px-5 py-3 flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {attendee.user?.firstName} {attendee.user?.lastName}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {attendee.user?.department || 'No department'}
-                      </p>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {format(new Date(attendee.markedAt), 'hh:mm a')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <AttendeeList attendees={attendees} onShowAdd={() => setShowAddPanel(true)} />
       </div>
     </div>
   )
